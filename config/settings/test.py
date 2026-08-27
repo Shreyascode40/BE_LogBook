@@ -34,5 +34,26 @@ TEMPLATES[0]["OPTIONS"]["debug"] = True  # type: ignore[index]
 # ------------------------------------------------------------------------------
 # https://docs.djangoproject.com/en/dev/ref/settings/#media-url
 MEDIA_URL = "http://media.testserver/"
+
+# DATABASE
+# ------------------------------------------------------------------------------
+# Production/development use PostgreSQL (see base.py). In sandboxed test
+# environments where no PostgreSQL server is reachable, fall back to SQLite so
+# the mandatory test suite can still run and verify behaviour. This is a test
+# only convenience; the configured application database remains PostgreSQL.
+import os as _os  # noqa: E402
+
+if not _os.environ.get("DATABASE_URL") and not _os.environ.get("POSTGRES_DB"):
+    DATABASES = {  # noqa: F405
+        "default": {
+            "ENGINE": "django.db.backends.sqlite3",
+            "NAME": ":memory:",
+        }
+    }
+
 # Your stuff...
 # ------------------------------------------------------------------------------
+
+# Disable admin error emails in tests so exception reporting never masks the
+# real failure with an invalid ADMINS crash.
+ADMINS = []  # noqa: F405

@@ -1,7 +1,9 @@
 # ruff: noqa: ERA001, E501
 """Base settings to build other settings files upon."""
+
 import os
 import ssl
+from datetime import timedelta
 from pathlib import Path
 
 import environ
@@ -53,10 +55,10 @@ else:
     DATABASES = {
         "default": {
             "ENGINE": "django.db.backends.postgresql",
-            "NAME": env.str("POSTGRES_DB"),
-            "USER": env.str("POSTGRES_USER"),
-            "PASSWORD": env.str("POSTGRES_PASSWORD"),
-            "HOST": env.str("POSTGRES_HOST", default="postgres"),
+            "NAME": env.str("POSTGRES_DB", default="be_logbook"),
+            "USER": env.str("POSTGRES_USER", default="be_logbook"),
+            "PASSWORD": env.str("POSTGRES_PASSWORD", default="be_logbook"),
+            "HOST": env.str("POSTGRES_HOST", default="localhost"),
             "PORT": env.str("POSTGRES_PORT", default="5432"),
         },
     }
@@ -90,7 +92,6 @@ THIRD_PARTY_APPS = [
     "crispy_bootstrap5",
     "allauth",
     "allauth.account",
-    "allauth.mfa",
     "allauth.socialaccount",
     "django_celery_beat",
     "rest_framework",
@@ -101,6 +102,20 @@ THIRD_PARTY_APPS = [
 
 LOCAL_APPS = [
     "be_logbook.users",
+    "be_logbook.accounts",
+    "be_logbook.academics",
+    "be_logbook.groups",
+    "be_logbook.projects",
+    "be_logbook.workflow",
+    "be_logbook.submissions",
+    "be_logbook.documents",
+    "be_logbook.reviews",
+    "be_logbook.assessments",
+    "be_logbook.co_po",
+    "be_logbook.notifications",
+    "be_logbook.audit",
+    "be_logbook.reports",
+    "be_logbook.logbook",
     # Your stuff: custom apps go here
 ]
 # https://docs.djangoproject.com/en/dev/ref/settings/#installed-apps
@@ -345,12 +360,47 @@ SOCIALACCOUNT_FORMS = {"signup": "be_logbook.users.forms.UserSocialSignupForm"}
 # django-rest-framework - https://www.django-rest-framework.org/api-guide/settings/
 REST_FRAMEWORK = {
     "DEFAULT_AUTHENTICATION_CLASSES": (
+        "rest_framework_simplejwt.authentication.JWTAuthentication",
         "rest_framework.authentication.SessionAuthentication",
-        "rest_framework.authentication.TokenAuthentication",
     ),
     "DEFAULT_PERMISSION_CLASSES": ("rest_framework.permissions.IsAuthenticated",),
     "DEFAULT_SCHEMA_CLASS": "drf_spectacular.openapi.AutoSchema",
+    "DEFAULT_PAGINATION_CLASS": "be_logbook.utils.pagination.StandardPagination",
+    "PAGE_SIZE": 25,
+    "EXCEPTION_HANDLER": "be_logbook.utils.exceptions.custom_exception_handler",
 }
+
+SIMPLE_JWT = {
+    "ACCESS_TOKEN_LIFETIME": timedelta(seconds=60 * 60 * 24),  # 1 day
+    "REFRESH_TOKEN_LIFETIME": timedelta(seconds=60 * 60 * 24 * 14),  # 14 days
+    "AUTH_HEADER_TYPES": ("Bearer",),
+    "USER_ID_FIELD": "id",
+    "USER_ID_CLAIM": "user_id",
+}
+
+# Application private media (documents) is served through a protected view,
+# never via static files or predictable URLs.
+PRIVATE_MEDIA_URL = "/protected-media/"
+PRIVATE_MEDIA_ROOT = str(APPS_DIR / "private_media")
+
+# Maximum upload size per document (bytes). Enforced server-side.
+MAX_DOCUMENT_SIZE = 25 * 1024 * 1024  # 25 MB
+ALLOWED_DOCUMENT_EXTENSIONS = [
+    "pdf",
+    "png",
+    "jpg",
+    "jpeg",
+    "doc",
+    "docx",
+    "ppt",
+    "pptx",
+    "xls",
+    "xlsx",
+    "zip",
+    "rar",
+    "txt",
+    "csv",
+]
 
 # django-cors-headers - https://github.com/adamchainz/django-cors-headers#setup
 CORS_URLS_REGEX = r"^/api/.*$"

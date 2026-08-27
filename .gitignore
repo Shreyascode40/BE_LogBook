@@ -270,6 +270,22 @@ dump.rdb
 
 ### Project template
 be_logbook/media/
+be_logbook/private_media/
 
 .pytest_cache/
 .ipython/
+
+# Secrets / environment files (NEVER commit)
+.envs/
+.env
+*.env
+
+# Local databases / PostgreSQL data cluster
+*.db
+*.sqlite3
+db.sqlite3
+dev.db
+.pgdata/
+
+# Logs
+*.log

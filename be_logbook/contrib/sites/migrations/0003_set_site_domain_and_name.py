@@ -3,6 +3,7 @@ To understand why this file is here, please read:
 
 https://cookiecutter-django.readthedocs.io/en/latest/5-help/faq.html#why-is-there-a-django-contrib-sites-directory-in-cookiecutter-django
 """
+
 from django.conf import settings
 from django.db import migrations
 
@@ -22,16 +23,19 @@ def _update_or_create_site_with_sequence(site_model, connection, domain, name):
         # don't do anything, we'll get a unique constraint violation the next time a
         # site is created.
         # To avoid this, we need to manually update DB sequence and make sure it's
-        # greater than the maximum value.
-        max_id = site_model.objects.order_by("-id").first().id
-        with connection.cursor() as cursor:
-            cursor.execute("SELECT last_value from django_site_id_seq")
-            (current_id,) = cursor.fetchone()
-            if current_id <= max_id:
-                cursor.execute(
-                    "alter sequence django_site_id_seq restart with %s",
-                    [max_id + 1],
-                )
+        # greater than the maximum value. This is database-engine specific; the
+        # raw SQL below only applies to PostgreSQL. Other backends (e.g. SQLite used
+        # in sandboxed tests) manage sequences automatically.
+        if connection.vendor == "postgresql":
+            max_id = site_model.objects.order_by("-id").first().id
+            with connection.cursor() as cursor:
+                cursor.execute("SELECT last_value from django_site_id_seq")
+                (current_id,) = cursor.fetchone()
+                if current_id <= max_id:
+                    cursor.execute(
+                        "alter sequence django_site_id_seq restart with %s",
+                        [max_id + 1],
+                    )
 
 
 def update_site_forward(apps, schema_editor):
@@ -57,7 +61,6 @@ def update_site_backward(apps, schema_editor):
 
 
 class Migration(migrations.Migration):
-
     dependencies = [("sites", "0002_alter_domain_unique")]
 
     operations = [migrations.RunPython(update_site_forward, update_site_backward)]
