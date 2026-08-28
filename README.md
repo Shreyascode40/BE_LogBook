@@ -1,95 +1,198 @@
 # BE Logbook
 
-this is my official college project
+**B.E. Project Log Book Management System** for *Akhil Bharatiya Maratha Shikshan Parishad's Anantrao Pawar College of Engineering & Research*.
 
 [![Built with Cookiecutter Django](https://img.shields.io/badge/built%20with-Cookiecutter%20Django-ff69b4.svg?logo=cookiecutter)](https://github.com/cookiecutter/cookiecutter-django/)
 [![Ruff](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/ruff/main/assets/badge/v2.json)](https://github.com/astral-sh/ruff)
 
-## Settings
+---
 
-Moved to [settings](https://cookiecutter-django.readthedocs.io/en/latest/1-getting-started/settings.html).
+## Project Overview
 
-## Basic Commands
+BE Logbook is a backend platform that digitizes and manages the entire lifecycle of
+Bachelor of Engineering (B.E.) final-year project log books. It lets students record
+project activity, faculty guides verify entries, reviewers assess work with rubrics,
+and the department produce the **official 40-page Project Log Book PDF** — generated
+by overlaying approved database data onto the college's immutable master template
+(rather than creating a new design).
 
-### Setting Up Your Users
+The system enforces an approval-gated workflow so that the final log book can only be
+generated once every required stage, document, review, and final submission is
+complete and verified.
 
-- To create a **normal user account**, just go to Sign Up and fill out the form. Once you submit it, you'll see a "Verify Your E-mail Address" page. Go to your console to see a simulated email verification message. Copy the link into your browser. Now the user's email should be verified and ready to go.
+---
 
-- To create a **superuser account**, use this command:
+## Tech Stack
 
-      uv run python manage.py createsuperuser
+| Layer        | Technology                                              |
+| ------------ | ------------------------------------------------------- |
+| Language     | Python 3.14                                             |
+| Web Framework| Django 6.x + Django REST Framework                      |
+| Auth         | dj-rest-auth + Simple JWT (email-based login)           |
+| Task Queue   | Celery + Redis                                          |
+| Documents    | Private media storage, PDF generation via `reportlab` + `pypdf` |
+| DB           | PostgreSQL (SQLite fallback for tests)                 |
+| Tooling      | uv (deps), ruff (lint), pytest + pytest-django, drf-spectacular (OpenAPI) |
 
-For convenience, you can keep your normal user logged in on Chrome and your superuser logged in on Firefox (or similar), so that you can see how the site behaves for both kinds of users.
+---
 
-### Type checks
+## User Roles (RBAC)
 
-Running type checks with mypy:
+| Role       | Capabilities                                                                 |
+| ---------- | ---------------------------------------------------------------------------- |
+| **Student**| Belongs to a project group, enters activities, uploads documents, generates/accesses **own** group's log book. |
+| **Faculty**| Acts as guide / reviewer, verifies submissions, enters marks, accesses assigned groups. |
+| **Reviewer**| Assigned per stage/group, conducts reviews and finalizes marks (assignment-based). |
+| **HOD**     | Full departmental access — all groups, final approvals, log book oversight. |
 
-    uv run mypy be_logbook
+Access is enforced everywhere via `can_access_group()` plus role checks; the generated
+PDF download URL is behind authentication + ownership/assignment and is not publicly
+guessable.
 
-### Test coverage
+---
 
-To run the tests, check your test coverage, and generate an HTML coverage report:
+## Core Modules
 
-    uv run coverage run -m pytest
-    uv run coverage html
-    uv run open htmlcov/index.html
+- **Accounts & Users** — email login, roles, `StudentProfile` (roll no, department, photo, TE result, exam seat) and `FacultyProfile`.
+- **Academics** — `Department`, `AcademicYear`, `Term`.
+- **Groups** — `ProjectGroup` (group number, department, academic year), `GroupMembership`, `GuideAssignment`, `ReviewAssignment`.
+- **Projects** — `Project` (title, area, guide), `ProjectSchedule`, `TopicFinalization`, `CompetitionDetail`, `PublicationDetail`, `TermRecord`, `FinalSubmissionInfo`.
+- **Workflow** — `Stage` (ordered, required, guide/reviewer approval, marks required), `StageDependency`, `StageDeadline`, `Section`.
+- **Submissions** — `Submission` + versioned `SubmissionVersion`, `Approval`, `ChangeRequest`, `FacultyRemark`, `StudentActivity`.
+- **Reviews** — `Review`, `ReviewMark`, `ReviewMarkCorrection` against `Rubric` / `RubricCriterion`.
+- **Documents** — typed `Document` storage (PHOTO, REPORT, SYNOPSIS, CERTIFICATE, SPONSORSHIP, …) with versions and checksums.
+- **CO/PO Attainment** — computed outcomes attainment per group.
+- **Notifications & Audit** — event notifications and an append-only audit trail.
+- **Final Log Book PDF** — see below.
 
-#### Running tests with pytest
+---
 
-    uv run pytest
+## Final Log Book PDF Generation
 
-### Live reloading and Sass CSS compilation
+The generated PDF is **the same official 40-page template** with real, approved data
+filled into the blanks. The original `Project Log book.pdf` is treated as an immutable
+master and is **never modified**; data is overlaid on a transparent layer and merged.
 
-Moved to [Live reloading and SASS compilation](https://cookiecutter-django.readthedocs.io/en/latest/2-local-development/developing-locally.html#using-webpack-or-gulp).
+### Architecture (services in `be_logbook/logbook/`)
 
-### Celery
+| Service | Responsibility |
+| ------- | -------------- |
+| `LogBookValidationService` | Eligibility gate — refuses generation unless required stages are approved, documents exist, reviews are finalized, and final submission is complete. Returns a clear `missing_items` list. |
+| `LogBookDataAssembler` | Single source of truth — gathers only real, stored values (no fabrication). |
+| `TemplateMappingService` | Locates template text anchors (via `pypdf` text visitor) and computes exact `(page, x, y)` placement instructions. |
+| `PDFRenderer` | Draws text/images on transparent A4 overlays and merges them onto the template with `pypdf`; auto-wraps/shrinks long text and inserts photos into placeholders. |
+| `PDFValidationService` | Post-generation check: 40 pages, opens correctly, structure intact. |
+| `LogBookPDFService` | Orchestrator: validate → load template (read-only) → assemble → map → render → validate → persist a **versioned** `GeneratedLogBook`. |
 
-This app comes with Celery.
+### API Endpoints
 
-To run a celery worker:
+| Method | Path | Description |
+| ------ | ---- | ----------- |
+| `POST` | `/api/v1/projects/<id>/logbook/generate/` | Generate the final log book. Returns `{success, message, file_url, page_count}` or `422` with `{success:false, missing_items:[...]}`. |
+| `GET`  | `/api/v1/projects/<id>/logbook/` | Retrieve the latest generated log book + version list. |
+| `GET`  | `/api/v1/logbook/<pk>/download/` | Authenticated, non-guessable file download. |
+
+Output filename: `Project_Log_Book_<group_number>.pdf`.
+
+### Field Coverage (pages filled from DB)
+
+- **Page 1** — Department, A.Y., Group No., Project Title, Area, Project Guide.
+- **Pages 3–4** — Member name, TE result, roll no, mobile, exam seat, email, contribution, and photo (into the "Affix your photo here" placeholder).
+- **Page 5** — Undertaking: department, batch years, academic year, project title, student names.
+- **Page 6** — Schedule table dates (from `StageDeadline`).
+- **Pages 7–8** — Topic finalization text, "Approved (Yes/No)", reviewer & coordinator names. Topic 2 only filled when Topic 1 is rejected (template rule).
+- **Pages 25 / 34** — Evaluation committee names.
+- **Pages 27 / 35** — External examiner feedback project title.
+- **Pages 28 / 39** — Competition & Publication tables (name, date, college, type, award / title, conference, ISSN, volume, page).
+- **Pages 37 / 38** — Sponsored-project company (only when a SPONSORSHIP document exists).
+
+Pages that are intentionally **preserved unchanged** (static official content): rules,
+activity-chart planned text, RTM, cost-estimation, review cover pages, and submission
+checklists. Blank fields stay blank — the system never writes `None` / `N/A`.
+
+### Tests
+
+`be_logbook/tests/test_logbook.py` includes a **visual regression test** asserting the
+generated PDF keeps exactly 40 pages, every page preserves static invariants (institution
+name, "Project Diary", record number), dynamic data is present, all placements stay
+within page bounds, the original template file is never mutated, and the empty-data
+rule is honored.
+
+---
+
+## Getting Started
+
+### Prerequisites
+- Python 3.14, `uv`, PostgreSQL (optional for local dev; tests fall back to SQLite).
+
+### Setup
 
 ```bash
-cd be_logbook
+uv sync                      # install dependencies
+cp .envs/.local/.django .envs/.local/.postgres   # configure env (see .envs/.local/)
+uv run python manage.py migrate
+uv run python manage.py createsuperuser
+uv run python manage.py runserver
+```
+
+### Running tests
+
+```bash
+uv run pytest
+```
+
+### Linting
+
+```bash
+uv run ruff check be_logbook
+uv run mypy be_logbook
+```
+
+### Celery (optional)
+
+```bash
 uv run celery -A config.celery_app worker -l info
 ```
 
-Please note: For Celery's import magic to work, it is important _where_ the celery commands are run. If you are in the same folder with _manage.py_, you should be right.
+---
 
-To run [periodic tasks](https://docs.celeryq.dev/en/stable/userguide/periodic-tasks.html), you'll need to start the celery beat scheduler service. You can start it as a standalone process:
+## ✅ Work Done (Checklist)
 
-```bash
-cd be_logbook
-uv run celery -A config.celery_app beat
-```
+- [x] Cookiecutter-Django backend scaffold (settings, apps, API schema).
+- [x] Authentication & RBAC (HOD / Faculty / Student / Reviewer) with JWT.
+- [x] Groups, memberships, guide & reviewer assignments.
+- [x] Workflow engine: ordered stages, dependencies, deadlines, sections.
+- [x] Submissions with versions, approvals, change requests, faculty remarks.
+- [x] Student activities logged against stages.
+- [x] Reviews with rubrics, criteria, marks, and mark-correction audit.
+- [x] Document management (typed, versioned, checksummed) including PHOTO & SPONSORSHIP.
+- [x] CO/PO attainment computation.
+- [x] Notifications and audit logging.
+- [x] **Final Log Book PDF generation** built as a template-overlay engine (not a new design).
+- [x] Eligibility validation that refuses generation with a `missing_items` report.
+- [x] `LogBookPDFService` + `LogBookDataAssembler` + `TemplateMappingService` + `PDFRenderer` + `PDFValidationService` + `LogBookValidationService`.
+- [x] API endpoints `POST/GET …/logbook/` and `…/logbook/generate/` + authenticated download.
+- [x] Versioned `GeneratedLogBook` records (template version, generator, status, file).
+- [x] `StudentProfile` extended with `photo`, `te_result`, `exam_seat_number`.
+- [x] Visual regression test (40-page preservation, layout invariants, empty-data rule).
+- [x] Activity-chart planned text, RTM, cost, and checklist pages preserved verbatim.
 
-or you can embed the beat service inside a worker with the `-B` option (not recommended for production use):
+## 🚧 Remaining Work (Checklist)
 
-```bash
-cd be_logbook
-uv run celery -A config.celery_app worker -B -l info
-```
+- [ ] **Activity-chart dynamic data** — populate Date / Completion status / student & guide signatures per month from `StudentActivity` (currently preserved as static template text to avoid misalignment).
+- [ ] **RTM & Cost-Estimation pages** — add data models/sources so these pages can be filled (currently left blank per the empty-data rule).
+- [ ] **Review detail pages** — the template's Term-I/II review pages are title-only; wire detailed review/marks forms if the official forms are added to the template.
+- [ ] **Final Evaluation marks table** — populate the official final-evaluation marks table from finalized `ReviewMark` values once the table layout is present in the template.
+- [ ] **Digital signatures** — implement the authorized signature/upload flow for guide, reviewer, coordinator, HOD, and external examiner (currently kept blank by design).
+- [ ] **Photo ingestion UI** — admin/student form to upload `StudentProfile.photo` (field exists; upload UI not yet built).
+- [ ] **Frontend / web client** — this repo is an API backend; a UI consuming the DRF/OpenAPI schema is not included.
+- [ ] **Sponsored-project detail fields** — add model fields (e.g., sponsored company, meeting summaries) beyond the SPONSORSHIP document flag.
+- [ ] **CI/CD** — wire the test + ruff + mypy suite into a pipeline and add PDF regression to it.
+- [ ] **Production hardening** — Sentry DSN, secret management, and object storage for generated log books.
 
-### Email Server
-
-In development, it is often nice to be able to see emails that are being sent from your application. For that reason local SMTP server [Mailpit](https://github.com/axllent/mailpit) with a web interface is available as docker container.
-
-Container mailpit will start automatically when you will run all docker containers.
-Please check [cookiecutter-django Docker documentation](https://cookiecutter-django.readthedocs.io/en/latest/2-local-development/developing-locally-docker.html) for more details how to start all containers.
-
-With Mailpit running, to view messages that are sent by your application, open your browser and go to `http://127.0.0.1:8025`
-
-### Sentry
-
-Sentry is an error logging aggregator service. You can sign up for a free account at <https://sentry.io/signup/?code=cookiecutter> or download and host it yourself.
-The system is set up with reasonable defaults, including 404 logging and integration with the WSGI application.
-
-You must set the DSN url in production.
+---
 
 ## Deployment
 
-The following details how to deploy this application.
-
-### Docker
-
-See detailed [cookiecutter-django Docker documentation](https://cookiecutter-django.readthedocs.io/en/latest/3-deployment/deployment-with-docker.html).
+See the [cookiecutter-django Docker documentation](https://cookiecutter-django.readthedocs.io/en/latest/3-deployment/deployment-with-docker.html)
+for full deployment guidance (Docker, gunicorn, static files, env config).
