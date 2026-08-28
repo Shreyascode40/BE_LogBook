@@ -73,6 +73,22 @@ class StudentProfile(models.Model):
         blank=True,
     )
     phone = models.CharField(max_length=20, blank=True)
+    te_result = models.CharField(
+        max_length=20,
+        blank=True,
+        help_text=_("Third-year (TE) examination result / percentage."),
+    )
+    exam_seat_number = models.CharField(
+        max_length=30,
+        blank=True,
+        help_text=_("University examination seat number."),
+    )
+    photo = models.ImageField(
+        upload_to="student_photos/",
+        null=True,
+        blank=True,
+        help_text=_("Passport-style photograph used in the log book."),
+    )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 

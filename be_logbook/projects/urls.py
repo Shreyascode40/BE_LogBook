@@ -1,7 +1,11 @@
 from __future__ import annotations
 
+from django.urls import path
+
 from rest_framework.routers import DefaultRouter
 
+from be_logbook.logbook.views import LogBookGenerateView
+from be_logbook.logbook.views import LogBookRetrieveView
 from be_logbook.projects.views import CompetitionDetailViewSet
 from be_logbook.projects.views import FinalSubmissionInfoViewSet
 from be_logbook.projects.views import ProjectScheduleViewSet
@@ -24,4 +28,16 @@ router.register("publications", PublicationDetailViewSet, basename="publications
 router.register("term-records", TermRecordViewSet, basename="term-records")
 
 app_name = "projects-api"
-urlpatterns = router.urls
+urlpatterns = [
+    path(
+        "<int:project_id>/logbook/generate/",
+        LogBookGenerateView.as_view(),
+        name="logbook-generate",
+    ),
+    path(
+        "<int:project_id>/logbook/",
+        LogBookRetrieveView.as_view(),
+        name="logbook-latest",
+    ),
+    *router.urls,
+]

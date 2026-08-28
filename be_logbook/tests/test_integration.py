@@ -10,7 +10,7 @@ from be_logbook.documents.models import Document
 from be_logbook.documents.services import DocumentService
 from be_logbook.groups.services import GroupService
 from be_logbook.logbook.models import GeneratedLogBook
-from be_logbook.logbook.services import LogBookGenerationService
+from be_logbook.logbook.services import LogBookPDFService
 from be_logbook.reviews.models import Review
 from be_logbook.reviews.models import ReviewAssignment
 from be_logbook.reviews.services import ReviewService
@@ -72,7 +72,7 @@ def _complete_stage(env, stage, request=None):
 @pytest.mark.django_db
 def test_full_integration_flow(env):
     # 1. Logbook generation must fail before completion.
-    ok, missing = LogBookGenerationService.validate(env["project"])
+    ok, missing = LogBookPDFService.validate(env["project"])
     assert not ok
 
     # 2. Complete every stage in order.
@@ -101,12 +101,22 @@ def test_full_integration_flow(env):
     env["group"].refresh_from_db()
     assert env["group"].status == "COMPLETED"
 
-    # 6. Generate logbook.
-    gen = LogBookGenerationService.generate(env["project"], env["hod"])
+    # 6. Mark final submission complete, then generate logbook.
+    from be_logbook.projects.models import FinalSubmissionInfo
+    from datetime import date
+
+    fs, _ = FinalSubmissionInfo.objects.get_or_create(
+        project=env["project"],
+        defaults={"submitted": True, "submitted_date": date.today()},
+    )
+    fs.submitted = True
+    fs.save()
+
+    gen = LogBookPDFService.generate(env["project"], env["hod"])
     assert isinstance(gen, GeneratedLogBook)
     assert gen.file
     assert gen.status == "READY"
 
     # 7. Regeneration bumps version.
-    gen2 = LogBookGenerationService.generate(env["project"], env["hod"])
+    gen2 = LogBookPDFService.generate(env["project"], env["hod"])
     assert gen2.version == gen.version + 1

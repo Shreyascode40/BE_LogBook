@@ -25,6 +25,11 @@ class GeneratedLogBook(models.Model):
         User, on_delete=models.PROTECT, related_name="logbooks_generated"
     )
     version = models.PositiveIntegerField(default=1)
+    template_version = models.CharField(
+        max_length=40,
+        blank=True,
+        help_text=_("Version / identifier of the official 40-page template used."),
+    )
     file = models.FileField(upload_to=_logbook_path, null=True, blank=True)
     status = models.CharField(max_length=20, choices=STATUS, default="READY")
     generated_at = models.DateTimeField(auto_now_add=True)
