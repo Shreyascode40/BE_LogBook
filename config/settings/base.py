@@ -49,19 +49,12 @@ LOCALE_PATHS = [str(BASE_DIR / "locale")]
 # ------------------------------------------------------------------------------
 # https://docs.djangoproject.com/en/dev/ref/settings/#databases
 
-if os.getenv("DATABASE_URL", default=None):
-    DATABASES = {"default": env.db("DATABASE_URL")}
-else:
-    DATABASES = {
-        "default": {
-            "ENGINE": "django.db.backends.postgresql",
-            "NAME": env.str("POSTGRES_DB", default="be_logbook"),
-            "USER": env.str("POSTGRES_USER", default="be_logbook"),
-            "PASSWORD": env.str("POSTGRES_PASSWORD", default="be_logbook"),
-            "HOST": env.str("POSTGRES_HOST", default="localhost"),
-            "PORT": env.str("POSTGRES_PORT", default="5432"),
-        },
+DATABASES = {
+    "default": {
+        "ENGINE": "django.db.backends.sqlite3",
+        "NAME": str(BASE_DIR / "db.sqlite3"),
     }
+}
 
 DATABASES["default"]["ATOMIC_REQUESTS"] = True
 # https://docs.djangoproject.com/en/stable/ref/settings/#std:setting-DEFAULT_AUTO_FIELD
